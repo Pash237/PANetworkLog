@@ -4,6 +4,6 @@
 # use_frameworks!
 
 target 'NetworkLogExample' do
-	pod 'PANetworkLog', :path => '/Users/alexeev/Documents/NetworkLog'
+	pod 'PANetworkLog'
 end
 
