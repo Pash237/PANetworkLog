@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/cocoapods/p/PANetworkLog.svg?style=flat)](http://cocoapods.org/pods/PANetworkLog)
 
 Simple iOS library to send all NSLog messages (stderr output) to backend server.
-Simple server to display logs is included in the repo.
+Simple server to display logs is [included](https://github.com/Pash237/PANetworkLog/blob/master/log_server.py) in the repo.
 
 ## Installation
 
@@ -19,12 +19,12 @@ pod 'PANetworkLog'
 ##Usage
 
 ```
-NSString *url = [NSString stringWithFormat:@"http://192.168.1.109?device_id=%@", [UIDevice currentDevice].identifierForVendor.UUIDString];
+NSString *url = [NSString stringWithFormat:@"http://example.com/logs?device_id=%@", [UIDevice currentDevice].identifierForVendor.UUIDString];
 [[PANetworkLog sharedInstance] forwardLogsToURL:url];
 ```
 
 To run the example project, clone the repo, and run `pod install` from the Example directory first.
-Don't forget to disable NSAppTransportSecurity if your server is not on https.
+Don't forget to disable `NSAppTransportSecurity` if your server is not on https.
 
 To run included server, type
 ```

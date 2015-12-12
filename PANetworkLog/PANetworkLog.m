@@ -5,6 +5,8 @@
 
 #import "PANetworkLog.h"
 
+static NSTimeInterval UpdateInterval = 0.5;
+
 @interface PANetworkLog ()
 @property (nonatomic) dispatch_source_t timer;
 @property (nonatomic) NSString *currentLogPath;
@@ -37,11 +39,16 @@ dispatch_source_t CreateDispatchTimer(double interval, dispatch_block_t block)
 	return timer;
 }
 
-- (NSString *)newLogPath
+- (NSString *)logsDirectory
 {
 	NSString *cachesDirectory = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
-	NSString *filename = [NSString stringWithFormat:@"%lf", CFAbsoluteTimeGetCurrent()];
-	return [cachesDirectory stringByAppendingPathComponent:filename];
+	return cachesDirectory;
+}
+
+- (NSString *)newLogPath
+{
+	NSString *filename = [NSString stringWithFormat:@"PANetworkLog_%lf", CFAbsoluteTimeGetCurrent()];
+	return [self.logsDirectory stringByAppendingPathComponent:filename];
 }
 
 - (void)forwardLogsToURL:(NSString *)urlString
@@ -49,13 +56,16 @@ dispatch_source_t CreateDispatchTimer(double interval, dispatch_block_t block)
 	self.currentLogPath = self.newLogPath;
 	self.serverURL = [NSURL URLWithString:urlString];
 
+	//send all old logs (there might be crases from previous launches)
+	[self sendAllLogsAtDirectory:self.logsDirectory toURL:self.serverURL];
+
 	NSLog(@"Logging to %@", self.serverURL);
 
 	freopen([self.currentLogPath cStringUsingEncoding:NSASCIIStringEncoding], "a+", stderr);
 
 	NSLog(@"---------- Starting session %@ ----------", [NSDate date]);
 
-	self.timer = CreateDispatchTimer(0.5, ^{
+	self.timer = CreateDispatchTimer(UpdateInterval, ^{
 		NSString *contents = [NSString stringWithContentsOfFile:self.currentLogPath encoding:NSUTF8StringEncoding error:NULL];
 		if (contents.length > 0) {
 			printf("%s", contents.UTF8String);
@@ -68,16 +78,60 @@ dispatch_source_t CreateDispatchTimer(double interval, dispatch_block_t block)
 	});
 }
 
+- (void)sendAllLogsAtDirectory:(NSString *)directoryPath toURL:(NSURL *)url
+{
+	NSMutableData *postData = [NSMutableData data];
+	[postData appendData:[@"----- Previous logs -----\n" dataUsingEncoding:NSUTF8StringEncoding]];
+
+	//find all existent logs in specified directory
+	NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:directoryPath error:NULL];
+	NSMutableArray *logFilePaths = [NSMutableArray array];
+	for (NSString *filename in files) {
+		if ([filename rangeOfString:@"PANetworkLog"].location != NSNotFound) {
+			NSString *filePath = [directoryPath stringByAppendingPathComponent:filename];
+
+			NSData *logData = [NSData dataWithContentsOfFile:filePath];
+			if (logData.length > 0) {
+				[postData appendData:logData];
+
+				[logFilePaths addObject:filePath];
+			} else {
+				//remove empty log
+				[[NSFileManager defaultManager] removeItemAtPath:filePath error:NULL];
+			}
+		}
+	}
+	[postData appendData:[@"-------------------------\n" dataUsingEncoding:NSUTF8StringEncoding]];
+
+	if (logFilePaths.count > 0) {
+		[self sendLogData:postData toURL:url completion:^(NSData *data, NSURLResponse *response, NSError *error) {
+			if (!error) {
+				//remove all old logs
+				for (NSString *filePath in logFilePaths) {
+					[[NSFileManager defaultManager] removeItemAtPath:filePath error:NULL];
+				}
+			}
+		}];
+	}
+}
+
 - (void)sendLogAtPath:(NSString *)filePath toURL:(NSURL *)url
+{
+	NSData *postData = [NSData dataWithContentsOfFile:filePath];
+	[self sendLogData:postData toURL:url completion:^(NSData *data, NSURLResponse *response, NSError *error) {
+		if (!error) {
+			[[NSFileManager defaultManager] removeItemAtPath:filePath error:NULL];
+		}
+	}];
+}
+
+- (void)sendLogData:(NSData *)logData toURL:(NSURL *)url completion:(void(^)(NSData *data, NSURLResponse *response, NSError *error))completion
 {
 	NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestUseProtocolCachePolicy timeoutInterval:60.0];
 	[request setHTTPMethod:@"POST"];
-	NSData *postData = [NSData dataWithContentsOfFile:filePath];
-	[request setHTTPBody:postData];
+	[request setHTTPBody:logData];
 
-	NSURLSessionDataTask *dataTask = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-		[[NSFileManager defaultManager] removeItemAtPath:filePath error:NULL];
-	}];
+	NSURLSessionDataTask *dataTask = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:completion];
 
 	[dataTask resume];
 }

@@ -22,6 +22,13 @@
 
     NSLog(@"Hello world!");
 
+    //crash test after 5 seconds
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        NSArray *array = @[
+                (NSObject *)nil
+        ];
+    });
+
     return YES;
 }
 
