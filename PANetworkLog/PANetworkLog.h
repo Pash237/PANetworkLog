@@ -7,4 +7,8 @@
 
 @interface PANetworkLog : NSObject
 
++ (instancetype)sharedInstance;
+
+- (void)forwardLogsToURL:(NSString *)url;
+
 @end
